@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+    <head>
+		<meta charset="utf-8">
+		<title>StarField</title>
+		<style>
+			body { margin: 0; }
+		</style>
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/Pass.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/AfterimageShader.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/AfterimagePass.js"></script>
+
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/GlitchPass.js"></script>
+	</head>
+	<body>
+		<script>		
+			const STAR_COLORS = [0x9bb2ff,0x9eb5ff,0xa3b9ff,0xaabfff,0xb2c5ff,0xbbccff,0xc4d2ff,0xccd8ff,0xd3ddff,0xdae2ff,0xdfe5ff,0xe4e9ff,0xe9ecff,0xeeefff,0xffefe0,0xffe9d2,0xffe5c6,0xffdfb8,0xffdaad,0xffd5a1,0xffd29c,0xffd096,0xffcc8f,0xffc885,0xffc178,0xffb765,0xffa94b,0xff9523,0xff7b00,0xff5200];
+			const SC_L = STAR_COLORS.length;
+			function giveStarColor (kelvin) {
+				return STAR_COLORS[Math.floor(Math.random() * (SC_L))]
+			}
+
+			const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 1000 );
+
+            const renderer = new THREE.WebGLRenderer();
+            renderer.setSize( window.innerWidth, window.innerHeight );
+            document.body.appendChild( renderer.domElement );
+
+			const composer = new THREE.EffectComposer(renderer);
+
+			const renderPass = new THREE.RenderPass( scene, camera );
+			composer.addPass( renderPass );
+			
+			const bloomPass = new THREE.UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.5, 0.4, 0.85 );
+			bloomPass.threshold = 0;
+			bloomPass.strength = 1;
+			bloomPass.radius = 0.46;
+			composer.addPass( bloomPass );
+
+			var afterimagePass = new THREE.AfterimagePass(0.8);
+			composer.addPass( afterimagePass );
+
+			const SPAWN_AREA_COORD = 200;
+			const MAX_STARS = 750;
+			const STAR_MIN_SIZE = 0.5;
+			const STAR_SIZE_MULTIPLIER = 2;
+			const STAR_START_POS = -1000;
+			const SPEED_MULTIPLIER = 3;
+			const SPEED_MINIMUM = 1;
+
+			var stars = [];
+
+            camera.position.z = 25;
+
+			function animate() {
+				requestAnimationFrame( animate );
+
+				// Move existing stars (null those that pass camera)
+				for (var si = 0; si < stars.length; si++) {
+					let s = stars[si];
+					if (s === null) continue;
+					if (s.position.z > 15) { // remove stars that pass the camera
+						s.geometry.dispose();
+						s.material.dispose();
+						scene.remove(s);
+						stars[si] = null;
+					} else {
+						s.position.z += s.speed
+					}
+				};
+
+				// remove deleted stars
+				stars = stars.filter((v, i, ar) => {
+					return v !== null;
+				});
+
+				// Add new star every other frame
+				for (var i = stars.length; i < MAX_STARS; i++) {
+						const geometry = new THREE.SphereGeometry( (Math.random() * STAR_SIZE_MULTIPLIER ) + STAR_MIN_SIZE , 32, 32 );
+						const material = new THREE.MeshBasicMaterial( {color: giveStarColor() } );
+						var newStar = new THREE.Mesh( geometry, material );
+						scene.add( newStar );
+
+						newStar.position.x = ((Math.random() * SPAWN_AREA_COORD) + (STAR_MIN_SIZE * STAR_SIZE_MULTIPLIER)) * [-1,1][Math.floor(Math.random()+0.5)];
+						newStar.position.y = ((Math.random() * SPAWN_AREA_COORD) + (STAR_MIN_SIZE * STAR_SIZE_MULTIPLIER)) * [-1,1][Math.floor(Math.random()+0.5)];
+						newStar.position.z = STAR_START_POS;
+						newStar.speed = (Math.random() * SPEED_MULTIPLIER) + SPEED_MINIMUM ;
+						
+						stars.push(newStar);
+				}
+
+				composer.render();
+			}
+			animate();
+		</script>
+	</body>
+</html>
