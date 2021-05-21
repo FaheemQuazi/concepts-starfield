@@ -21,17 +21,30 @@
 		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/AfterimagePass.js"></script>
 
 		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/GlitchPass.js"></script>
+
+		
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/BokehShader.js"></script>
+		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/BokehPass.js"></script>
 	</head>
 	<body>
-		<script>		
-			const STAR_COLORS = [0x9bb2ff,0x9eb5ff,0xa3b9ff,0xaabfff,0xb2c5ff,0xbbccff,0xc4d2ff,0xccd8ff,0xd3ddff,0xdae2ff,0xdfe5ff,0xe4e9ff,0xe9ecff,0xeeefff,0xffefe0,0xffe9d2,0xffe5c6,0xffdfb8,0xffdaad,0xffd5a1,0xffd29c,0xffd096,0xffcc8f,0xffc885,0xffc178,0xffb765,0xffa94b,0xff9523,0xff7b00,0xff5200];
+		<script>					
+			const SPAWN_AREA_COORD = 200;
+			const MAX_STARS = 750;
+			const STAR_MIN_SIZE = 0.5;
+			const STAR_SIZE_MULTIPLIER = 2;
+			const STAR_START_POS = -1000;
+			const SPEED_MULTIPLIER = 3;
+			const SPEED_MINIMUM = 1;
+
+			const STAR_COLORS = [
+				0xFF0000, 0x0000FF, 0x008000, 0xB22222, 0xFF7F50, 0x9ACD32,
+				0xFF4500, 0x2E8B57, 0xDAA520, 0xD2691E, 0x5F9EA0, 0x1E90FF,
+				0xFF69B4, 0x8A2BE2, 0x00FF7F
+			];
 			const SC_L = STAR_COLORS.length;
-			function giveStarColor (kelvin) {
-				return STAR_COLORS[Math.floor(Math.random() * (SC_L))]
-			}
 
 			const scene = new THREE.Scene();
-            const camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, 1000 );
+            const camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, (STAR_START_POS*-1 + 100) );
 
             const renderer = new THREE.WebGLRenderer();
             renderer.setSize( window.innerWidth, window.innerHeight );
@@ -44,24 +57,37 @@
 			
 			const bloomPass = new THREE.UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.5, 0.4, 0.85 );
 			bloomPass.threshold = 0;
-			bloomPass.strength = 1;
-			bloomPass.radius = 0.46;
+			bloomPass.strength = 0.1;
+			bloomPass.radius = 0.1;
 			composer.addPass( bloomPass );
 
-			var afterimagePass = new THREE.AfterimagePass(0.8);
+			var afterimagePass = new THREE.AfterimagePass(0.9);
 			composer.addPass( afterimagePass );
 
-			const SPAWN_AREA_COORD = 200;
-			const MAX_STARS = 750;
-			const STAR_MIN_SIZE = 0.5;
-			const STAR_SIZE_MULTIPLIER = 2;
-			const STAR_START_POS = -1000;
-			const SPEED_MULTIPLIER = 3;
-			const SPEED_MINIMUM = 1;
+			const bokehPass = new THREE.BokehPass( scene, camera, {
+				focus: 300,
+				aperture: 0.0000065,
+				maxblur: 0.01,
+
+				width: window.innerWidth,
+				height: window.innerHeight
+			});
+			composer.addPass(bokehPass);
+
+			// Font Config
+			const fontLoader = new THREE.FontLoader();
+			var textFont = null;
+			fontLoader.load('DMSans_Bold.json', (fnt) => {
+				textFont = fnt;
+			});
 
 			var stars = [];
+			var names = [];
+			var name_spawn_chance = 0.001;
+			var firstRun = true;
+			var hasNameSpawned = false;
 
-            camera.position.z = 25;
+            camera.position.z = 0;
 
 			function animate() {
 				requestAnimationFrame( animate );
@@ -69,40 +95,95 @@
 				// Move existing stars (null those that pass camera)
 				for (var si = 0; si < stars.length; si++) {
 					let s = stars[si];
-					if (s === null) continue;
-					if (s.position.z > 15) { // remove stars that pass the camera
-						s.geometry.dispose();
-						s.material.dispose();
-						scene.remove(s);
-						stars[si] = null;
-					} else {
-						s.position.z += s.speed
-					}
-				};
 
-				// remove deleted stars
-				stars = stars.filter((v, i, ar) => {
-					return v !== null;
-				});
-
-				// Add new star every other frame
-				for (var i = stars.length; i < MAX_STARS; i++) {
-						const geometry = new THREE.SphereGeometry( (Math.random() * STAR_SIZE_MULTIPLIER ) + STAR_MIN_SIZE , 32, 32 );
-						const material = new THREE.MeshBasicMaterial( {color: giveStarColor() } );
-						var newStar = new THREE.Mesh( geometry, material );
-						scene.add( newStar );
-
-						newStar.position.x = ((Math.random() * SPAWN_AREA_COORD) + (STAR_MIN_SIZE * STAR_SIZE_MULTIPLIER)) * [-1,1][Math.floor(Math.random()+0.5)];
-						newStar.position.y = ((Math.random() * SPAWN_AREA_COORD) + (STAR_MIN_SIZE * STAR_SIZE_MULTIPLIER)) * [-1,1][Math.floor(Math.random()+0.5)];
-						newStar.position.z = STAR_START_POS;
-						newStar.speed = (Math.random() * SPEED_MULTIPLIER) + SPEED_MINIMUM ;
+					if (s.position.z > -650 && s.hasText) {
+							s.children[1].material.opacity += 0.01667;
+					} else if (s.position.z > 0) { // remove stars that pass the camera
+						s.children.forEach(sc => {
+							sc.geometry.dispose();
+							sc.material.dispose();
+							s.remove(sc);
+						});
 						
-						stars.push(newStar);
-				}
+						scene.remove(s);
+						stars.splice(si, 1);
+						continue;
+					}
+					
+					s.position.z += s.speed
+					s.children[0].material.opacity += 0.01667;
+				};
 
 				composer.render();
 			}
 			animate();
+
+			
+			setInterval(() => {
+				for (var i = stars.length; i < MAX_STARS; i++) {
+					let selcolor = STAR_COLORS[Math.floor(Math.random() * SC_L)];
+					const starMat = new THREE.MeshBasicMaterial({
+						color: selcolor,
+						transparent: true,
+						opacity: 0
+					});
+					let starGeom = new THREE.SphereGeometry( (Math.random() * STAR_SIZE_MULTIPLIER ) + STAR_MIN_SIZE , 32, 32 );
+					let newStarMesh = new THREE.Mesh( starGeom, starMat );
+					newStarMesh.name = "star";
+
+					let newStarGroup = new THREE.Group();
+					newStarGroup.position.x = ((Math.random() * SPAWN_AREA_COORD) + (STAR_MIN_SIZE * STAR_SIZE_MULTIPLIER)) * [-1,1][Math.floor(Math.random()+0.5)];
+					newStarGroup.position.y = ((Math.random() * SPAWN_AREA_COORD) + (STAR_MIN_SIZE * STAR_SIZE_MULTIPLIER)) * [-1,1][Math.floor(Math.random()+0.5)];
+					newStarGroup.position.z = STAR_START_POS;
+					newStarGroup.speed = (Math.random() * SPEED_MULTIPLIER) + SPEED_MINIMUM ;
+					newStarGroup.hasText = false;
+					
+					newStarGroup.add(newStarMesh);
+
+					if (Math.random() > (1-name_spawn_chance) && !hasNameSpawned && names.length > 0 && textFont != null) {
+						let selName = names.pop();
+						let textGeom = new THREE.TextGeometry(selName, {
+							font: textFont,
+							size: 11,
+							height: 1
+						});
+						let textMat = new THREE.MeshBasicMaterial ( {
+							color: selcolor,
+							transparent: true,
+							opacity: 0,
+						});
+						
+
+						let textMesh = new THREE.Mesh( textGeom, textMat);
+						textMesh.name = "text";
+						textMesh.position.x = 5;
+						textMesh.position.y = 5;
+
+						newStarGroup.add(textMesh);
+						newStarGroup.hasText = true;
+						newStarGroup.speed = (Math.random() * SPEED_MULTIPLIER/2 + 0.2) + SPEED_MINIMUM ;
+						newStarGroup.position.x *= 0.75;
+						newStarGroup.position.y *= 0.75;
+					
+
+						hasNameSpawned = true;
+						name_spawn_chance = 0.001;
+						setTimeout(() => {
+							hasNameSpawned = false;
+						}, 500);
+						setTimeout(() => {
+							names.splice(0, 1, selName);
+						}, 10000);
+					}
+
+					scene.add(newStarGroup);
+					stars.push(newStarGroup);
+				}
+
+				if (!hasNameSpawned) {
+					name_spawn_chance = Math.min(name_spawn_chance + 0.0001667, 1);
+				}
+			}, 100);
 		</script>
 	</body>
 </html>
