@@ -4,7 +4,11 @@
 		<meta charset="utf-8">
 		<title>StarField</title>
 		<style>
-			body { margin: 0; }
+			body, html {
+				margin: 0;
+				padding: 0;
+				overflow: hidden;
+			}
 		</style>
 		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
@@ -25,29 +29,39 @@
 		
 		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/BokehShader.js"></script>
 		<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/BokehPass.js"></script>
+
+		<script src="https://unpkg.com/@seregpie/three.text-texture"></script>
+		<script src="https://unpkg.com/@seregpie/three.text-sprite"></script>
 	</head>
 	<body>
-		<script>					
-			const SPAWN_AREA_COORD = 200;
-			const MAX_STARS = 750;
-			const STAR_MIN_SIZE = 0.5;
-			const STAR_SIZE_MULTIPLIER = 2;
-			const STAR_START_POS = -1000;
-			const SPEED_MULTIPLIER = 3;
-			const SPEED_MINIMUM = 1;
+		<script>			
+			const URL_PARAMS = new URLSearchParams(window.location.search);
+            const URL_DOF_ENABLE = URL_PARAMS.get('dof');
+
+			const SPAWN_AREA_COORD = 125;
+			const MAX_STARS = 200;
+			const STAR_MIN_SIZE = 0.7;
+			const STAR_SIZE_MULTIPLIER = 2.5;
+			const STAR_START_POS = -1250;
+			const TEXT_FADE_IN_POS = -700;
+			const TEXT_FADE_IN_RATE = 0.01667;
+			const SPEED_MULTIPLIER = 4;
+			const SPEED_MINIMUM = 2;
+			const VIEW_WIDTH = window.innerWidth;
+			const VIEW_HEIGHT = window.innerHeight;
 
 			const STAR_COLORS = [
-				0xFF0000, 0x0000FF, 0x008000, 0xB22222, 0xFF7F50, 0x9ACD32,
-				0xFF4500, 0x2E8B57, 0xDAA520, 0xD2691E, 0x5F9EA0, 0x1E90FF,
-				0xFF69B4, 0x8A2BE2, 0x00FF7F
+				new THREE.Color(0xFF0000), new THREE.Color(0x0000FF), new THREE.Color(0x008000), new THREE.Color(0xB22222), new THREE.Color(0xFF7F50), new THREE.Color(0x9ACD32),
+				new THREE.Color(0xFF4500), new THREE.Color(0x2E8B57), new THREE.Color(0xDAA520), new THREE.Color(0xD2691E), new THREE.Color(0x5F9EA0), new THREE.Color(0x1E90FF),
+				new THREE.Color(0xFF69B4), new THREE.Color(0x8A2BE2), new THREE.Color(0x00FF7F)
 			];
 			const SC_L = STAR_COLORS.length;
 
 			const scene = new THREE.Scene();
-            const camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 0.1, (STAR_START_POS*-1 + 100) );
+            const camera = new THREE.PerspectiveCamera( 70, VIEW_WIDTH / VIEW_HEIGHT, 0.1, (STAR_START_POS*-1 + 100) );
 
             const renderer = new THREE.WebGLRenderer();
-            renderer.setSize( window.innerWidth, window.innerHeight );
+            renderer.setSize( VIEW_WIDTH, VIEW_HEIGHT );
             document.body.appendChild( renderer.domElement );
 
 			const composer = new THREE.EffectComposer(renderer);
@@ -55,31 +69,26 @@
 			const renderPass = new THREE.RenderPass( scene, camera );
 			composer.addPass( renderPass );
 			
-			const bloomPass = new THREE.UnrealBloomPass( new THREE.Vector2( window.innerWidth, window.innerHeight ), 1.5, 0.4, 0.85 );
-			bloomPass.threshold = 0;
-			bloomPass.strength = 0.1;
-			bloomPass.radius = 0.1;
-			composer.addPass( bloomPass );
+			const bloomPass = new THREE.UnrealBloomPass( new THREE.Vector2( VIEW_WIDTH, VIEW_HEIGHT ), 1.5, 0.4, 0.85 );
+			bloomPass.threshold = 0.1;
+			bloomPass.strength = 0.5;
+			bloomPass.radius = 0.5;
+			composer.addPass( bloomPass ); 
 
 			var afterimagePass = new THREE.AfterimagePass(0.9);
 			composer.addPass( afterimagePass );
 
-			const bokehPass = new THREE.BokehPass( scene, camera, {
-				focus: 300,
-				aperture: 0.0000065,
-				maxblur: 0.01,
+			if (URL_DOF_ENABLE !== null) {
+				const bokehPass = new THREE.BokehPass( scene, camera, {
+					focus: 300,
+					aperture: 0.0000065,
+					maxblur: 0.01,
 
-				width: window.innerWidth,
-				height: window.innerHeight
-			});
-			composer.addPass(bokehPass);
-
-			// Font Config
-			const fontLoader = new THREE.FontLoader();
-			var textFont = null;
-			fontLoader.load('DMSans_Bold.json', (fnt) => {
-				textFont = fnt;
-			});
+					width: VIEW_WIDTH,
+					height: VIEW_HEIGHT
+				});
+				composer.addPass(bokehPass); 
+			}
 
 			var stars = [];
 			var names = [];
@@ -90,46 +99,71 @@
             camera.position.z = 0;
 
 			function animate() {
-				requestAnimationFrame( animate );
 
-				// Move existing stars (null those that pass camera)
+				// move and fade stars
 				for (var si = 0; si < stars.length; si++) {
-					let s = stars[si];
+					if (stars[si].position.z > TEXT_FADE_IN_POS && stars[si].hasText) {
+						stars[si].children[1].material.opacity += 0.01667;
+					} else if (stars[si].position.z > 0) { // Move stars back to start and randomize
+						stars[si].speed = (Math.random() * SPEED_MULTIPLIER) + SPEED_MINIMUM;
+						stars[si].children[0].material.opacity = 0;
+						stars[si].children[0].material.color = STAR_COLORS[Math.floor(Math.random() * SC_L)];
+						stars[si].position.x = ((Math.random() * SPAWN_AREA_COORD) + (STAR_MIN_SIZE * STAR_SIZE_MULTIPLIER)) * [-1,1][Math.floor(Math.random()+0.5)];
+						stars[si].position.y = ((Math.random() * SPAWN_AREA_COORD) + (STAR_MIN_SIZE * STAR_SIZE_MULTIPLIER)) * [-1,1][Math.floor(Math.random()+0.5)];
+						stars[si].position.z = STAR_START_POS - stars[si].speed;
+						stars[si].children[1].material.opacity = 0;
 
-					if (s.position.z > -650 && s.hasText) {
-							s.children[1].material.opacity += 0.01667;
-					} else if (s.position.z > 0) { // remove stars that pass the camera
-						s.children.forEach(sc => {
-							sc.geometry.dispose();
-							sc.material.dispose();
-							s.remove(sc);
-						});
-						
-						scene.remove(s);
-						stars.splice(si, 1);
-						continue;
+						if (names.length > 0 && !hasNameSpawned && !stars[si].hasText) {
+							hasNameSpawned = true;
+							
+							let thisname = names.pop();
+							stars[si].children[1].text = thisname;
+							stars[si].speed = stars[si].speed * 0.7;
+							stars[si].position.x *= 0.7;
+							stars[si].position.y *= 0.7;
+							stars[si].hasText = true;
+
+							setTimeout(() => {
+								hasNameSpawned = false;
+							}, 1500);
+						} else {
+							stars[si].hasText = false;
+						}
 					}
 					
-					s.position.z += s.speed
-					s.children[0].material.opacity += 0.01667;
+					stars[si].position.z += stars[si].speed
+					stars[si].children[0].material.opacity += 0.01667;
 				};
 
 				composer.render();
+				requestAnimationFrame( animate );
 			}
-			animate();
 
 			
-			setInterval(() => {
-				for (var i = stars.length; i < MAX_STARS; i++) {
+			function spawnstars() {
+				for (var i = 0; i < MAX_STARS; i++) {
 					let selcolor = STAR_COLORS[Math.floor(Math.random() * SC_L)];
 					const starMat = new THREE.MeshBasicMaterial({
 						color: selcolor,
 						transparent: true,
 						opacity: 0
 					});
-					let starGeom = new THREE.SphereGeometry( (Math.random() * STAR_SIZE_MULTIPLIER ) + STAR_MIN_SIZE , 32, 32 );
+					let starSize = (Math.random() * STAR_SIZE_MULTIPLIER ) + STAR_MIN_SIZE;
+					let starGeom = new THREE.SphereGeometry( starSize , 4, 4 );
 					let newStarMesh = new THREE.Mesh( starGeom, starMat );
 					newStarMesh.name = "star";
+
+					let newStarText = new THREE.TextSprite({
+						alignment: 'center',
+						backgroundColor: 'rgba(0,0,0,0)',
+						color: '#' + selcolor.getHexString(),
+						strokeColor:'#fff',
+						strokeWidth: 0,
+						fontFamily: 'sans-serif',
+						fontSize: 10,
+						text: 'DustinKazi'
+					});
+					newStarText.material.opacity = 0;
 
 					let newStarGroup = new THREE.Group();
 					newStarGroup.position.x = ((Math.random() * SPAWN_AREA_COORD) + (STAR_MIN_SIZE * STAR_SIZE_MULTIPLIER)) * [-1,1][Math.floor(Math.random()+0.5)];
@@ -139,51 +173,16 @@
 					newStarGroup.hasText = false;
 					
 					newStarGroup.add(newStarMesh);
-
-					if (Math.random() > (1-name_spawn_chance) && !hasNameSpawned && names.length > 0 && textFont != null) {
-						let selName = names.pop();
-						let textGeom = new THREE.TextGeometry(selName, {
-							font: textFont,
-							size: 11,
-							height: 1
-						});
-						let textMat = new THREE.MeshBasicMaterial ( {
-							color: selcolor,
-							transparent: true,
-							opacity: 0,
-						});
-						
-
-						let textMesh = new THREE.Mesh( textGeom, textMat);
-						textMesh.name = "text";
-						textMesh.position.x = 5;
-						textMesh.position.y = 5;
-
-						newStarGroup.add(textMesh);
-						newStarGroup.hasText = true;
-						newStarGroup.speed = (Math.random() * SPEED_MULTIPLIER/2 + 0.2) + SPEED_MINIMUM ;
-						newStarGroup.position.x *= 0.75;
-						newStarGroup.position.y *= 0.75;
-					
-
-						hasNameSpawned = true;
-						name_spawn_chance = 0.001;
-						setTimeout(() => {
-							hasNameSpawned = false;
-						}, 500);
-						setTimeout(() => {
-							names.splice(0, 1, selName);
-						}, 10000);
-					}
+					newStarGroup.add(newStarText);
+					newStarText.position.y = starSize + 5;
 
 					scene.add(newStarGroup);
 					stars.push(newStarGroup);
 				}
+				animate();
+			}
+			window.addEventListener('load', spawnstars)
 
-				if (!hasNameSpawned) {
-					name_spawn_chance = Math.min(name_spawn_chance + 0.0001667, 1);
-				}
-			}, 100);
 		</script>
 	</body>
 </html>
