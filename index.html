@@ -37,6 +37,7 @@
 		<script>			
 			const URL_PARAMS = new URLSearchParams(window.location.search);
             const URL_DOF_ENABLE = URL_PARAMS.get('dof');
+            const URL_WS_ENABLE = URL_PARAMS.get('ws');
 
 			const SPAWN_AREA_COORD = 125;
 			const MAX_STARS = 200;
@@ -50,11 +51,7 @@
 			const VIEW_WIDTH = window.innerWidth;
 			const VIEW_HEIGHT = window.innerHeight;
 
-			const STAR_COLORS = [
-				new THREE.Color(0xFF0000), new THREE.Color(0x0000FF), new THREE.Color(0x008000), new THREE.Color(0xB22222), new THREE.Color(0xFF7F50), new THREE.Color(0x9ACD32),
-				new THREE.Color(0xFF4500), new THREE.Color(0x2E8B57), new THREE.Color(0xDAA520), new THREE.Color(0xD2691E), new THREE.Color(0x5F9EA0), new THREE.Color(0x1E90FF),
-				new THREE.Color(0xFF69B4), new THREE.Color(0x8A2BE2), new THREE.Color(0x00FF7F)
-			];
+			const STAR_COLORS = ['#A03D3D','#A1873D','#6EA03D','#3DA155','#3D9FA0','#3D55A1','#6F3DA0','#A13D88','#A1A1A1'];
 			const SC_L = STAR_COLORS.length;
 
 			const scene = new THREE.Scene();
@@ -75,7 +72,7 @@
 			bloomPass.radius = 0.5;
 			composer.addPass( bloomPass ); 
 
-			var afterimagePass = new THREE.AfterimagePass(0.9);
+			var afterimagePass = new THREE.AfterimagePass(0.7); //afterimagePass.uniforms[ 'damp' ].value
 			composer.addPass( afterimagePass );
 
 			if (URL_DOF_ENABLE !== null) {
@@ -92,8 +89,6 @@
 
 			var stars = [];
 			var names = [];
-			var name_spawn_chance = 0.001;
-			var firstRun = true;
 			var hasNameSpawned = false;
 
             camera.position.z = 0;
@@ -107,7 +102,7 @@
 					} else if (stars[si].position.z > 0) { // Move stars back to start and randomize
 						stars[si].speed = (Math.random() * SPEED_MULTIPLIER) + SPEED_MINIMUM;
 						stars[si].children[0].material.opacity = 0;
-						stars[si].children[0].material.color = STAR_COLORS[Math.floor(Math.random() * SC_L)];
+						stars[si].children[0].material.color.set(STAR_COLORS[Math.floor(Math.random() * SC_L)]);
 						stars[si].position.x = ((Math.random() * SPAWN_AREA_COORD) + (STAR_MIN_SIZE * STAR_SIZE_MULTIPLIER)) * [-1,1][Math.floor(Math.random()+0.5)];
 						stars[si].position.y = ((Math.random() * SPAWN_AREA_COORD) + (STAR_MIN_SIZE * STAR_SIZE_MULTIPLIER)) * [-1,1][Math.floor(Math.random()+0.5)];
 						stars[si].position.z = STAR_START_POS - stars[si].speed;
@@ -115,9 +110,11 @@
 
 						if (names.length > 0 && !hasNameSpawned && !stars[si].hasText) {
 							hasNameSpawned = true;
-							
+
 							let thisname = names.pop();
-							stars[si].children[1].text = thisname;
+							stars[si].children[1].text = thisname.n;
+							stars[si].children[1].color = thisname.c;
+							stars[si].children[0].material.color.set(thisname.c);
 							stars[si].speed = stars[si].speed * 0.7;
 							stars[si].position.x *= 0.7;
 							stars[si].position.y *= 0.7;
@@ -141,7 +138,7 @@
 
 			
 			function spawnstars() {
-				for (var i = 0; i < MAX_STARS; i++) {
+				for (var i = stars.length; i < MAX_STARS; i++) {
 					let selcolor = STAR_COLORS[Math.floor(Math.random() * SC_L)];
 					const starMat = new THREE.MeshBasicMaterial({
 						color: selcolor,
@@ -156,7 +153,7 @@
 					let newStarText = new THREE.TextSprite({
 						alignment: 'center',
 						backgroundColor: 'rgba(0,0,0,0)',
-						color: '#' + selcolor.getHexString(),
+						color: selcolor,
 						strokeColor:'#fff',
 						strokeWidth: 0,
 						fontFamily: 'sans-serif',
@@ -179,9 +176,44 @@
 					scene.add(newStarGroup);
 					stars.push(newStarGroup);
 				}
-				animate();
 			}
-			window.addEventListener('load', spawnstars)
+			window.addEventListener('load', spawnstars);
+			window.addEventListener('load', animate);
+
+			if (URL_WS_ENABLE !== null) {
+				function wsenable() {
+					var ws = new WebSocket("ws://localhost:7287");
+					ws.onopen = (evt) => {
+						console.log('ws>open');
+					}
+					ws.onmessage = (evt) => {
+						console.log('ws>msg', evt.data);
+						let m = evt.data.split(':');
+						switch (m[0]) {
+							case 'name':
+								names.unshift({
+									n: m[1],
+									c: m[2]
+								});
+								break;
+							case 'ping':
+								ws.send('pong');
+								break;
+							default:
+								break;
+						}
+					}
+					ws.onerror = (evt) => {
+						console.log('ws>err');
+					}
+					ws.onclose = (evt) => {
+						console.log('ws>close');
+						delete ws;
+						setTimeout(wsenable, 5000);
+					}
+				}
+				wsenable();
+			}
 
 		</script>
 	</body>
