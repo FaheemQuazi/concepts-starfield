@@ -32,12 +32,13 @@
 
 		<script src="https://unpkg.com/@seregpie/three.text-texture"></script>
 		<script src="https://unpkg.com/@seregpie/three.text-sprite"></script>
+
+		<script src="https://github.com/tmijs/tmi.js/releases/download/v1.8.3/tmi.min.js"></script>
 	</head>
 	<body>
 		<script>			
 			const URL_PARAMS = new URLSearchParams(window.location.search);
             const URL_DOF_ENABLE = URL_PARAMS.get('dof');
-            const URL_WS_ENABLE = URL_PARAMS.get('ws');
 
 			const SPAWN_AREA_COORD = 125;
 			const MAX_STARS = 200;
@@ -180,40 +181,18 @@
 			window.addEventListener('load', spawnstars);
 			window.addEventListener('load', animate);
 
-			if (URL_WS_ENABLE !== null) {
-				function wsenable() {
-					var ws = new WebSocket("ws://localhost:7287");
-					ws.onopen = (evt) => {
-						console.log('ws>open');
-					}
-					ws.onmessage = (evt) => {
-						console.log('ws>msg', evt.data);
-						let m = evt.data.split(':');
-						switch (m[0]) {
-							case 'name':
-								names.unshift({
-									n: m[1],
-									c: m[2]
-								});
-								break;
-							case 'ping':
-								ws.send('pong');
-								break;
-							default:
-								break;
-						}
-					}
-					ws.onerror = (evt) => {
-						console.log('ws>err');
-					}
-					ws.onclose = (evt) => {
-						console.log('ws>close');
-						delete ws;
-						setTimeout(wsenable, 5000);
-					}
-				}
-				wsenable();
-			}
+			const chat = new tmi.Client({
+				channels: [ 'DustinKazi' ]
+			});
+			
+			chat.on('message', (channel, tags, message, self) => {
+				names.unshift({
+					n: tags['display-name'],
+					c: tags['color']
+				});
+			});
+			
+			chat.connect();
 
 		</script>
 	</body>
